@@ -1,8 +1,30 @@
-import { Keys, pointerListener, keyListener, box, hit, createMainCanvas, loop, game, createCanvas, GameElement, HitTest, Steppable } from './engine.js'
+import {
+  createCanvas,
+  createMainCanvas,
+  GameElement,
+  pointerListener,
+  Steppable,
+  loop,
+  game,
+  Keys,
+  Point,
+  hit,
+  HitTest,
+  M,
+  P,
+  V
+} from './engine.js'
 
 export function main () {
   const canvas: HTMLCanvasElement = createMainCanvas()
-  const gameEntities: Steppable[] = [ball(canvas, (el) => gameEntities.push(el), pointerListener(canvas))]
+  const gameEntities: Steppable[] = [
+    ball(
+      {x: 0, y: 0},
+      canvas,
+      (el) => gameEntities.push(el),
+      pointerListener(canvas)
+    )
+  ]
   loop(game(gameEntities, canvas), 60)
 }
 
@@ -31,49 +53,53 @@ function player(keys : Keys) : Steppable {
   }
 }
 
-function ball(world: HTMLCanvasElement, addGameElements, pointerHit: HitTest) : Steppable {
+function ball(position: Point, world: HTMLCanvasElement, addGameElements, pointerHit: HitTest) : Steppable {
+  const w2 = world.width / 2 - 10
+  const h2 = world.height / 2 - 10
+  const rand = () => P.rand(-w2, w2, -h2, h2)
   const { canvas, ctx } = createCanvas(4, 4)
-  const moveInterval = 1000
-  let lastMove = 0
-  let x = 0
-  let y = 0
-
-  const rand = (min, max) => { return (Math.random() * max) + min }
-  const either = (a, b) => { return Math.random() > 0.5 ? a : b }
+  const isTooLarge = () => canvas.width > 10
+  let speed = 1
+  let target: Point = rand()
+  const hitTest = hit(() => P.box(position, canvas))
   
-  const move = (timestamp: number) => {
-    if (lastMove === 0 || timestamp - lastMove > moveInterval) {
-      x = either(1, -1) * rand(canvas.width  / 2, world.width / 2  - canvas.width  / 2)
-      y = either(1, -1) * rand(canvas.height / 2, world.height / 2 - canvas.height / 2)
-      lastMove = timestamp
+  const move = (diff: number, position, target) => {
+    return V.add(position, V.vector(position, target, speed * diff / 60))
+  }
+
+  const lookForTarget = (target: Point) => {
+    if (hitTest(P.box(target, { width: 1, height: 1 }))) {
       canvas.width += 1
       canvas.height += 1
+      speed++
+      if (isTooLarge()) {
+        addGameElements(
+          ball(position, world, addGameElements, pointerHit),
+          ball(position, world, addGameElements, pointerHit),
+          ball(position, world, addGameElements, pointerHit),
+          ball(position, world, addGameElements, pointerHit)
+        )
+      } else {
+        addGameElements(
+          ball(position, world, addGameElements, pointerHit)
+        )
+      }
+      return rand()
     }
-    return { x: x, y: y }
+
+    return target
   }
 
   const draw = () => {
-    ctx.fillStyle = '#8a4a4a'
+    ctx.fillStyle = isTooLarge() ? '#222222' : '#8a4a4a'
     ctx.fillRect(0, 0, canvas.width, canvas.height)
     return canvas
   }
-
-  const hit = () => {
-    if (pointerHit(box(x, y, canvas))) {
-      canvas.width = 4
-      canvas.height = 4
-      addGameElements(
-        ball(world, addGameElements, pointerHit),
-        ball(world, addGameElements, pointerHit),
-        ball(world, addGameElements, pointerHit)
-      )
-    }
-  }
   
   return (timestamp: number, diff: number, totalProgress: number) : GameElement => {
-    hit()
-    const { x, y } = move(timestamp)
-    return { x: x, y: y, image: draw() }
+    if (!isTooLarge()) target = lookForTarget(target)
+    if (!isTooLarge()) position = move(diff, position, target)
+    return { ...position, image: draw() }
   }
 }
 
